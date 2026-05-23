@@ -14,7 +14,7 @@ export default function InputForm({ setResult, setLoading, loading }) {
     setResult(null)
     try {
       const res = await axios.post(
-        "http://127.0.0.1:8000/run",
+        "https://zamp-asa-backend.onrender.com/run",
         form
       )
       setResult(res.data)
