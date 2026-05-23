@@ -67,8 +67,8 @@ npm run dev
 ```
 
 ## Live Demo
-- Backend: [Render URL]
-- Frontend: [Render URL]
+- Backend: https://zamp-asa-backend.onrender.com
+- Frontend: https://zamp-asa-frontend.onrender.com
 
 ## Submission
 - **Case Study:** PS-3 — GTM Personalised Outreach
