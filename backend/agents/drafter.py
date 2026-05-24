@@ -10,15 +10,23 @@ async def draft_email(
     prospect_name: str,
     company_name: str,
     hook: str,
-    research: str
+    research: str,
+    tone: str = "formal"
 ):
     first_name = prospect_name.split()[0]
+
+    tone_instruction = {
+        "formal": "Professional and polished. No contractions. Respectful distance.",
+        "casual": "Conversational and warm. Use contractions. Sound like a peer.",
+        "direct": "Straight to the point. No fluff. Short sentences. Lead with value."
+    }.get(tone, "Professional and polished.")
 
     prompt = f"""You are an expert B2B copywriter.
 
 Write a cold outreach email for:
 Prospect: {prospect_name}
 Company: {company_name}
+Tone: {tone_instruction}
 
 Hook: {hook}
 Research: {research}
@@ -26,12 +34,11 @@ Research: {research}
 STRICT RULES:
 - EXACTLY 4 sentences in body — count them
 - Never use: "synergy", "leverage", "hope this finds you well", "we're excited", "we're thrilled"
-- Never say "Our technology has helped other companies" 
+- Never say "Our technology has helped other companies"
 - Every sentence must reference this specific prospect or company
-- Sound human, not corporate
 - Do NOT mention our company name — use "our platform"
 
-Return ONLY valid JSON, no markdown, no extra text:
+Return ONLY valid JSON, no markdown:
 {{
   "subject": "primary subject line",
   "body": "Hi {first_name},\\n\\n[exactly 4 sentences]\\n\\n[CTA sentence]\\n\\nBest,\\n[SDR Name]",
@@ -48,28 +55,19 @@ Return ONLY valid JSON, no markdown, no extra text:
     response = client.chat.completions.create(
         model="llama-3.3-70b-versatile",
         messages=[
-            {
-                "role": "system",
-                "content": "You are an expert B2B copywriter. Return only valid JSON. No markdown. No extra text."
-            },
-            {
-                "role": "user",
-                "content": prompt
-            }
+            {"role": "system", "content": "You are an expert B2B copywriter. Return only valid JSON. No markdown. No extra text."},
+            {"role": "user", "content": prompt}
         ],
         temperature=0.7,
         max_tokens=800
     )
 
     raw = response.choices[0].message.content.strip()
-    
     try:
-        # Remove markdown if present
         if raw.startswith("```"):
             raw = raw.split("```")[1]
             if raw.startswith("json"):
                 raw = raw[4:]
-        
         parsed = json.loads(raw)
         email_text = f"SUBJECT: {parsed['subject']}\n\n{parsed['body']}"
         score = json.dumps(parsed.get("score", {}))
