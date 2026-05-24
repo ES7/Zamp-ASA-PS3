@@ -57,6 +57,7 @@ def get_all_runs():
     result = []
     for row in rows:
         d = dict(row)
+        d["id"] = d.get("id") or d.get("run_id")
         try:
             d["sources"] = json.loads(d.get("sources", "[]"))
         except:
@@ -82,6 +83,7 @@ def get_existing_run(prospect: str, company: str, edge_case: str):
     conn.close()
     if row:
         d = dict(row)
+        d["id"] = d.get("id") or d.get("run_id")
         try:
             d["sources"] = json.loads(d.get("sources", "[]"))
         except:
