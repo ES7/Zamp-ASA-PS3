@@ -2,7 +2,7 @@ from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import StreamingResponse
 from pydantic import BaseModel
-from database import init_db, save_run, get_all_runs
+from database import init_db, save_run, get_all_runs, get_existing_run
 from agents.researcher import research_prospect
 from agents.hook_finder import find_hook
 from agents.drafter import draft_email
@@ -24,17 +24,30 @@ class ProspectInput(BaseModel):
     prospect_name: str
     company_name: str
     edge_case: str = "none"
+    force_new: bool = False
 
 @app.on_event("startup")
 async def startup():
     init_db()
 
+@app.post("/check")
+async def check_existing(data: ProspectInput):
+    existing = get_existing_run(
+        data.prospect_name,
+        data.company_name,
+        data.edge_case
+    )
+    if existing:
+        return {"exists": True, "run": existing}
+    return {"exists": False}
+
 @app.post("/run")
 async def run_pipeline(data: ProspectInput):
     async def stream():
         run_id = str(uuid.uuid4())[:8]
+        start_time = datetime.now()
+
         try:
-            # Agent 1
             yield f"data: {json.dumps({'stage': 'research', 'status': 'running', 'message': 'Agent 1 — Researching prospect & company...'})}\n\n"
             research, sources = await research_prospect(
                 data.prospect_name,
@@ -43,20 +56,21 @@ async def run_pipeline(data: ProspectInput):
             )
             yield f"data: {json.dumps({'stage': 'research', 'status': 'done', 'message': 'Agent 1 — Research complete'})}\n\n"
 
-            # Agent 2
             yield f"data: {json.dumps({'stage': 'hook', 'status': 'running', 'message': 'Agent 2 — Identifying best hook...'})}\n\n"
             hook = await find_hook(research, data.edge_case)
             yield f"data: {json.dumps({'stage': 'hook', 'status': 'done', 'message': 'Agent 2 — Hook identified'})}\n\n"
 
-            # Agent 3
             yield f"data: {json.dumps({'stage': 'draft', 'status': 'running', 'message': 'Agent 3 — Drafting personalised email...'})}\n\n"
-            email = await draft_email(
+            email, score, subject_variants = await draft_email(
                 data.prospect_name,
                 data.company_name,
                 hook,
                 research
             )
             yield f"data: {json.dumps({'stage': 'draft', 'status': 'done', 'message': 'Agent 3 — Email drafted'})}\n\n"
+
+            end_time = datetime.now()
+            duration = round((end_time - start_time).total_seconds(), 1)
 
             result = {
                 "run_id": run_id,
@@ -68,6 +82,9 @@ async def run_pipeline(data: ProspectInput):
                 "sources": sources,
                 "hook": hook,
                 "email_draft": email,
+                "email_score": score,
+                "subject_variants": subject_variants,
+                "duration": duration,
                 "status": "completed"
             }
             save_run(result)
