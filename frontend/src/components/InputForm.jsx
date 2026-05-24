@@ -9,28 +9,43 @@ export default function InputForm({ setResult, setLoading, setStages, loading })
     edge_case: "none"
   })
   const [error, setError] = useState(null)
+  const [existing, setExisting] = useState(null)
 
-  const handleSubmit = async () => {
+  const checkExisting = async () => {
     if (!form.prospect_name || !form.company_name) return
+    try {
+      const res = await fetch(`${BACKEND_URL}/check`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify(form)
+      })
+      const data = await res.json()
+      if (data.exists) {
+        setExisting(data.run)
+      } else {
+        setExisting(null)
+        runPipeline()
+      }
+    } catch (_) {
+      runPipeline()
+    }
+  }
+
+  const runPipeline = async () => {
     setLoading(true)
     setResult(null)
     setError(null)
-    setStages({
-      research: "waiting",
-      hook: "waiting",
-      draft: "waiting"
-    })
+    setExisting(null)
+    setStages({ research: "waiting", hook: "waiting", draft: "waiting" })
 
     try {
       const response = await fetch(`${BACKEND_URL}/run`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify(form)
+        body: JSON.stringify({ ...form, force_new: true })
       })
 
-      if (!response.ok) {
-        throw new Error(`Server error: ${response.status}`)
-      }
+      if (!response.ok) throw new Error(`Server error: ${response.status}`)
 
       const reader = response.body.getReader()
       const decoder = new TextDecoder()
@@ -47,40 +62,15 @@ export default function InputForm({ setResult, setLoading, setStages, loading })
         for (const line of lines) {
           const trimmed = line.trim()
           if (!trimmed.startsWith("data:")) continue
-
           const jsonStr = trimmed.slice(5).trim()
           if (!jsonStr) continue
 
           try {
             const data = JSON.parse(jsonStr)
-
-            if (data.stage === "error") {
-              setError(data.message)
-              setLoading(false)
-              return
-            }
-
-            if (data.stage === "complete") {
-              setResult(data.result)
-              setLoading(false)
-              setStages({
-                research: "done",
-                hook: "done",
-                draft: "done"
-              })
-              return
-            }
-
-            if (data.stage && data.status) {
-              setStages(prev => ({
-                ...prev,
-                [data.stage]: data.status
-              }))
-            }
-
-          } catch (e) {
-            // skip malformed
-          }
+            if (data.stage === "error") { setError(data.message); setLoading(false); return }
+            if (data.stage === "complete") { setResult(data.result); setLoading(false); setStages({ research: "done", hook: "done", draft: "done" }); return }
+            if (data.stage && data.status) { setStages(prev => ({ ...prev, [data.stage]: data.status })) }
+          } catch (_) {}
         }
       }
     } catch (err) {
@@ -98,7 +88,7 @@ export default function InputForm({ setResult, setLoading, setStages, loading })
           <input
             placeholder="e.g. Dara Khosrowshahi"
             value={form.prospect_name}
-            onChange={e => setForm({ ...form, prospect_name: e.target.value })}
+            onChange={e => { setForm({ ...form, prospect_name: e.target.value }); setExisting(null) }}
           />
         </div>
         <div className="form-group">
@@ -106,14 +96,14 @@ export default function InputForm({ setResult, setLoading, setStages, loading })
           <input
             placeholder="e.g. Uber"
             value={form.company_name}
-            onChange={e => setForm({ ...form, company_name: e.target.value })}
+            onChange={e => { setForm({ ...form, company_name: e.target.value }); setExisting(null) }}
           />
         </div>
         <div className="form-group">
           <label>Scenario</label>
           <select
             value={form.edge_case}
-            onChange={e => setForm({ ...form, edge_case: e.target.value })}
+            onChange={e => { setForm({ ...form, edge_case: e.target.value }); setExisting(null) }}
           >
             <option value="none">Happy Path</option>
             <option value="no_news">No Recent News</option>
@@ -125,26 +115,42 @@ export default function InputForm({ setResult, setLoading, setStages, loading })
       </div>
 
       {error && (
-        <div style={{
-          background: "#fff0f0",
-          border: "1px solid #ffcccc",
-          borderRadius: "8px",
-          padding: "12px 16px",
-          color: "#cc0000",
-          fontSize: "13px",
-          marginBottom: "12px"
-        }}>
+        <div style={{ background: "#fff0f0", border: "1px solid #ffcccc", borderRadius: "8px", padding: "12px 16px", color: "#cc0000", fontSize: "13px", marginBottom: "12px" }}>
           ❌ {error}
         </div>
       )}
 
-      <button
-        className="btn-primary"
-        onClick={handleSubmit}
-        disabled={loading || !form.prospect_name || !form.company_name}
-      >
-        {loading ? "Running..." : "Generate Outreach ✨"}
-      </button>
+      {existing && (
+        <div style={{ background: "#fffbe6", border: "1px solid #ffe58f", borderRadius: "8px", padding: "16px", marginBottom: "12px" }}>
+          <p style={{ fontSize: "13px", fontWeight: 600, marginBottom: "10px", color: "#7d4a00" }}>
+            ⚡ Previous run found for this prospect ({new Date(existing.timestamp).toLocaleDateString()})
+          </p>
+          <div style={{ display: "flex", gap: "8px" }}>
+            <button
+              onClick={() => { setResult(existing); setExisting(null) }}
+              style={{ background: "#6c63ff", color: "white", border: "none", padding: "8px 16px", borderRadius: "6px", fontSize: "13px", cursor: "pointer" }}
+            >
+              Use Previous Result
+            </button>
+            <button
+              onClick={() => { setExisting(null); runPipeline() }}
+              style={{ background: "white", border: "1px solid #6c63ff", color: "#6c63ff", padding: "8px 16px", borderRadius: "6px", fontSize: "13px", cursor: "pointer" }}
+            >
+              Generate New
+            </button>
+          </div>
+        </div>
+      )}
+
+      {!existing && (
+        <button
+          className="btn-primary"
+          onClick={checkExisting}
+          disabled={loading || !form.prospect_name || !form.company_name}
+        >
+          {loading ? "Running..." : "Generate Outreach ✨"}
+        </button>
+      )}
     </div>
   )
 }
