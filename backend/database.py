@@ -16,6 +16,9 @@ def init_db():
             sources TEXT,
             hook TEXT,
             email_draft TEXT,
+            email_score TEXT,
+            subject_variants TEXT,
+            duration REAL,
             status TEXT
         )
     ''')
@@ -25,7 +28,7 @@ def init_db():
 def save_run(data: dict):
     conn = sqlite3.connect(DB_PATH)
     conn.execute('''
-        INSERT OR REPLACE INTO runs VALUES (?,?,?,?,?,?,?,?,?,?)
+        INSERT OR REPLACE INTO runs VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?)
     ''', (
         data["run_id"],
         data["timestamp"],
@@ -36,6 +39,9 @@ def save_run(data: dict):
         json.dumps(data.get("sources", [])),
         data["hook"],
         data["email_draft"],
+        data.get("email_score", ""),
+        json.dumps(data.get("subject_variants", [])),
+        data.get("duration", 0),
         data["status"]
     ))
     conn.commit()
@@ -55,5 +61,34 @@ def get_all_runs():
             d["sources"] = json.loads(d.get("sources", "[]"))
         except:
             d["sources"] = []
+        try:
+            d["subject_variants"] = json.loads(d.get("subject_variants", "[]"))
+        except:
+            d["subject_variants"] = []
         result.append(d)
     return result
+
+def get_existing_run(prospect: str, company: str, edge_case: str):
+    conn = sqlite3.connect(DB_PATH)
+    conn.row_factory = sqlite3.Row
+    row = conn.execute(
+        '''SELECT * FROM runs 
+           WHERE LOWER(prospect)=LOWER(?) 
+           AND LOWER(company)=LOWER(?) 
+           AND edge_case=? 
+           ORDER BY timestamp DESC LIMIT 1''',
+        (prospect, company, edge_case)
+    ).fetchone()
+    conn.close()
+    if row:
+        d = dict(row)
+        try:
+            d["sources"] = json.loads(d.get("sources", "[]"))
+        except:
+            d["sources"] = []
+        try:
+            d["subject_variants"] = json.loads(d.get("subject_variants", "[]"))
+        except:
+            d["subject_variants"] = []
+        return d
+    return None
