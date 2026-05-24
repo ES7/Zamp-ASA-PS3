@@ -103,7 +103,7 @@ async def batch_run(data: BatchInput):
                 "research_summary": research,
                 "sources": sources,
                 "hook": hook,
-                "email_draft": email,
+                "email_draft": email,  # already parsed in drafter.py
                 "email_score": score,
                 "subject_variants": variants,
                 "duration": 0,
@@ -112,7 +112,12 @@ async def batch_run(data: BatchInput):
             save_run(result)
             results.append(result)
         except Exception as e:
-            results.append({"prospect": p.prospect_name, "company": p.company_name, "status": "error", "message": str(e)})
+            results.append({
+                "prospect": p.prospect_name,
+                "company": p.company_name,
+                "status": "error",
+                "message": str(e)
+            })
     return {"results": results}
 
 @app.get("/runs")
