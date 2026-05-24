@@ -13,6 +13,7 @@ def init_db():
             company TEXT,
             edge_case TEXT,
             research_summary TEXT,
+            sources TEXT,
             hook TEXT,
             email_draft TEXT,
             status TEXT
@@ -24,7 +25,7 @@ def init_db():
 def save_run(data: dict):
     conn = sqlite3.connect(DB_PATH)
     conn.execute('''
-        INSERT INTO runs VALUES (?,?,?,?,?,?,?,?,?)
+        INSERT OR REPLACE INTO runs VALUES (?,?,?,?,?,?,?,?,?,?)
     ''', (
         data["run_id"],
         data["timestamp"],
@@ -32,6 +33,7 @@ def save_run(data: dict):
         data["company"],
         data["edge_case"],
         data["research_summary"],
+        json.dumps(data.get("sources", [])),
         data["hook"],
         data["email_draft"],
         data["status"]
@@ -46,4 +48,12 @@ def get_all_runs():
         'SELECT * FROM runs ORDER BY timestamp DESC'
     ).fetchall()
     conn.close()
-    return [dict(row) for row in rows]
+    result = []
+    for row in rows:
+        d = dict(row)
+        try:
+            d["sources"] = json.loads(d.get("sources", "[]"))
+        except:
+            d["sources"] = []
+        result.append(d)
+    return result
