@@ -1,9 +1,9 @@
 from groq import Groq
 from dotenv import load_dotenv
 import os
+import json
 
 load_dotenv()
-
 client = Groq(api_key=os.getenv("GROQ_API_KEY"))
 
 async def draft_email(
@@ -11,71 +11,46 @@ async def draft_email(
     company_name: str,
     hook: str,
     research: str
-) -> str:
-
+):
     first_name = prospect_name.split()[0]
 
-    prompt = f"""Write a cold outreach email for:
+    prompt = f"""You are an expert B2B copywriter.
+
+Write a cold outreach email for:
 Prospect: {prospect_name}
 Company: {company_name}
 
-Hook identified:
-{hook}
+Hook: {hook}
+Research: {research}
 
-Research context:
-{research}
+STRICT RULES:
+- EXACTLY 4 sentences in body — count them
+- Never use: "synergy", "leverage", "hope this finds you well", "we're excited", "we're thrilled"
+- Never say "Our technology has helped other companies" 
+- Every sentence must reference this specific prospect or company
+- Sound human, not corporate
+- Do NOT mention our company name — use "our platform"
 
-Rules:
-- Subject line must be specific, not generic
-- Opening line must reference the hook directly
-- Max 4 sentences in body
-- One clear CTA at the end
-- Do NOT use "synergy", "leverage", 
-  "hope this finds you well"
-- Sound like a human wrote it
-- Do NOT mention our company name —
-  use "our platform" instead
-
-Return in this exact format:
-
-SUBJECT: [subject line]
-
-Hi {first_name},
-
-[Email body — 4 sentences max]
-
-[CTA sentence]
-
-Best,
-[SDR Name]"""
+Return ONLY valid JSON, no markdown, no extra text:
+{{
+  "subject": "primary subject line",
+  "body": "Hi {first_name},\\n\\n[exactly 4 sentences]\\n\\n[CTA sentence]\\n\\nBest,\\n[SDR Name]",
+  "subject_variants": ["variant 2", "variant 3"],
+  "score": {{
+    "overall": 8,
+    "specificity": 8,
+    "hook_strength": 9,
+    "cta_quality": 7,
+    "reasoning": "one line explanation"
+  }}
+}}"""
 
     response = client.chat.completions.create(
         model="llama-3.3-70b-versatile",
         messages=[
             {
                 "role": "system",
-                "content": """You are an expert B2B copywriter 
-                who writes personalized cold emails that get replies.
-                
-                STRICT RULES:
-                - Never mention negative news, controversies, 
-                legal issues, safety incidents, or scandals
-                - Never mention layoffs, losses, or problems
-                - Focus ONLY on positive growth signals
-                - Emails must be concise — max 4 sentences in body
-                - CTA should vary — not always "schedule a call"
-                - Sound human, not corporate
-                - Never use: synergy, leverage, 
-                hope this finds you well, excited to connect
-                
-                - STRICTLY count — body must be exactly 4 sentences, no more
-                - Never use "we're excited", "we're thrilled"
-                - Never assume prospect is new to their role unless 
-                research explicitly confirms a recent job change
-                
-                - Never write "Our technology has already helped 
-                other companies" or similar generic claims
-                - Every sentence must be specific to this prospect"""
+                "content": "You are an expert B2B copywriter. Return only valid JSON. No markdown. No extra text."
             },
             {
                 "role": "user",
@@ -83,7 +58,22 @@ Best,
             }
         ],
         temperature=0.7,
-        max_tokens=400
+        max_tokens=800
     )
 
-    return response.choices[0].message.content
+    raw = response.choices[0].message.content.strip()
+    
+    try:
+        # Remove markdown if present
+        if raw.startswith("```"):
+            raw = raw.split("```")[1]
+            if raw.startswith("json"):
+                raw = raw[4:]
+        
+        parsed = json.loads(raw)
+        email_text = f"SUBJECT: {parsed['subject']}\n\n{parsed['body']}"
+        score = json.dumps(parsed.get("score", {}))
+        variants = parsed.get("subject_variants", [])
+        return email_text, score, variants
+    except:
+        return raw, "{}", []
