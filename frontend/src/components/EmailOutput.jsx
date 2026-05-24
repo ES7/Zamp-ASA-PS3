@@ -1,24 +1,20 @@
-export default function EmailOutput({ result }) {
+export default function EmailOutput({ result, research }) {
   const copy = () => { navigator.clipboard.writeText(result.email_draft); alert("Copied!") }
-
   const download = () => {
     const blob = new Blob([result.email_draft], { type: "text/plain" })
-    const url = URL.createObjectURL(blob)
-    const a = document.createElement("a")
-    a.href = url
-    a.download = `outreach_${result.prospect.replace(" ", "_")}.txt`
-    a.click()
+    const a = document.createElement("a"); a.href = URL.createObjectURL(blob)
+    a.download = `outreach_${result.prospect.replace(" ", "_")}.txt`; a.click()
   }
 
-  const edgeCaseLabel = {
-    none: "Happy Path", no_news: "No Recent News",
-    job_change: "Recent Job Change", bad_news: "Company in Bad News", competitor: "Uses Competitor"
-  }
-
+  const edgeCaseLabel = { none: "Happy Path", no_news: "No Recent News", job_change: "Recent Job Change", bad_news: "Company in Bad News", competitor: "Uses Competitor" }
   let score = null
   try { score = typeof result.email_score === "string" ? JSON.parse(result.email_score) : result.email_score } catch (_) {}
-
   const scoreColor = (v) => v >= 8 ? "#2e7d32" : v >= 6 ? "#e65100" : "#cc0000"
+
+  // Parse confidence from hook text
+  const confidenceMatch = result.hook?.match(/CONFIDENCE:\s*(High|Medium|Low)/i)
+  const confidence = confidenceMatch ? confidenceMatch[1] : null
+  const confidenceColor = { High: "#2e7d32", Medium: "#e65100", Low: "#cc0000" }
 
   return (
     <div className="card">
@@ -29,6 +25,7 @@ export default function EmailOutput({ result }) {
         <span className="meta-item">👤 {result.prospect}</span>
         <span className="meta-item">🏢 {result.company}</span>
         <span className="meta-item">🎭 {edgeCaseLabel[result.edge_case]}</span>
+        {result.tone && <span className="meta-item">🎙️ {result.tone}</span>}
         {result.duration && <span className="meta-item">⏱️ {result.duration}s</span>}
         <span className="meta-item">✅ {result.status}</span>
       </div>
@@ -38,12 +35,7 @@ export default function EmailOutput({ result }) {
         <div style={{ background: "#f8f9fa", borderRadius: "8px", padding: "16px", marginBottom: "16px" }}>
           <p style={{ fontSize: "13px", fontWeight: 600, marginBottom: "12px" }}>📊 Email Quality Score</p>
           <div style={{ display: "flex", gap: "16px", flexWrap: "wrap" }}>
-            {[
-              { label: "Overall", value: score.overall },
-              { label: "Specificity", value: score.specificity },
-              { label: "Hook Strength", value: score.hook_strength },
-              { label: "CTA Quality", value: score.cta_quality }
-            ].map(item => (
+            {[{ label: "Overall", value: score.overall }, { label: "Specificity", value: score.specificity }, { label: "Hook Strength", value: score.hook_strength }, { label: "CTA Quality", value: score.cta_quality }].map(item => (
               <div key={item.label} style={{ textAlign: "center" }}>
                 <div style={{ fontSize: "24px", fontWeight: 700, color: scoreColor(item.value) }}>{item.value}/10</div>
                 <div style={{ fontSize: "11px", color: "#888" }}>{item.label}</div>
@@ -54,35 +46,47 @@ export default function EmailOutput({ result }) {
         </div>
       )}
 
-      {/* Hook */}
-      <h3 style={{ fontSize: "13px", color: "#6c63ff", marginBottom: "8px", fontWeight: 600 }}>🎯 Hook Identified</h3>
+      {/* Hook + Confidence Badge */}
+      <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: "8px" }}>
+        <h3 style={{ fontSize: "13px", color: "#6c63ff", fontWeight: 600 }}>🎯 Hook Identified</h3>
+        {confidence && (
+          <span style={{ background: confidenceColor[confidence], color: "white", padding: "3px 10px", borderRadius: "20px", fontSize: "11px", fontWeight: 600 }}>
+            {confidence} Confidence
+          </span>
+        )}
+      </div>
       <div className="hook-box">{result.hook}</div>
 
+      {/* Research Preview */}
+      {research && (
+        <details style={{ marginTop: "16px", marginBottom: "8px" }}>
+          <summary style={{ fontSize: "13px", color: "#555", fontWeight: 600, cursor: "pointer" }}>🔬 Research Preview (Agent 1 Output)</summary>
+          <div style={{ background: "#f8f9fa", borderRadius: "8px", padding: "12px 16px", marginTop: "8px", fontSize: "13px", lineHeight: 1.6, color: "#444" }}>
+            {research}
+          </div>
+        </details>
+      )}
+
       {/* Subject Variants */}
-      {result.subject_variants && result.subject_variants.length > 0 && (
+      {result.subject_variants?.length > 0 && (
         <>
-          <h3 style={{ fontSize: "13px", color: "#555", marginBottom: "8px", fontWeight: 600, marginTop: "16px" }}>
-            📝 Subject Line Variants
-          </h3>
+          <h3 style={{ fontSize: "13px", color: "#555", marginBottom: "8px", fontWeight: 600, marginTop: "16px" }}>📝 Subject Line Variants</h3>
           <div style={{ display: "flex", flexDirection: "column", gap: "6px", marginBottom: "16px" }}>
             {result.subject_variants.map((v, i) => (
-              <div key={i} style={{ background: "#f0edff", borderRadius: "6px", padding: "8px 12px", fontSize: "13px", color: "#4a4a4a" }}>
-                {i + 1}. {v}
-              </div>
+              <div key={i} style={{ background: "#f0edff", borderRadius: "6px", padding: "8px 12px", fontSize: "13px", color: "#4a4a4a" }}>{i + 1}. {v}</div>
             ))}
           </div>
         </>
       )}
 
       {/* Sources */}
-      {result.sources && result.sources.length > 0 && (
+      {result.sources?.length > 0 && (
         <>
           <h3 style={{ fontSize: "13px", color: "#555", marginBottom: "8px", fontWeight: 600 }}>🔗 Sources Used</h3>
           <div style={{ background: "#f8f9fa", borderRadius: "8px", padding: "12px 16px", marginBottom: "16px" }}>
             {result.sources.map((src, i) => (
               <div key={i} style={{ marginBottom: "4px" }}>
-                <a href={src} target="_blank" rel="noopener noreferrer"
-                  style={{ fontSize: "12px", color: "#6c63ff", wordBreak: "break-all" }}>{src}</a>
+                <a href={src} target="_blank" rel="noopener noreferrer" style={{ fontSize: "12px", color: "#6c63ff", wordBreak: "break-all" }}>{src}</a>
               </div>
             ))}
           </div>
